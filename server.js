@@ -1110,6 +1110,157 @@ app.get('/api/ecommerce/produtos/consulta', validateApiKey, (req, res) => {
     }
 });
 
+// Dados mockados de pedidos
+const pedidosMockados = {};
+let proximoCdOrcamento = 1000;
+
+// Status de pedidos: 0=Não encontrado, 1=Pendente, 2=Em separação, 3=Conferência, 4=Faturado, 5=Despachado, 6=Entregue, 7=Entrega não realizada, 8=Cancelado, 9=Devolvido
+const statusPedidosMap = {
+    'Desconhecido': 0,
+    'Pendente': 1,
+    'Em separação': 2,
+    'Conferência': 3,
+    'Faturado': 4,
+    'Despachado': 5,
+    'Entregue': 6,
+    'Entrega não realizada': 7,
+    'Cancelado': 8,
+    'Devolvido': 9
+};
+
+// Endpoint POST /api/ecommerce/pedidos - Registrar pedido
+app.post('/api/ecommerce/pedidos', validateApiKey, (req, res) => {
+    try {
+        const pedido = req.body;
+
+        // Validações obrigatórias
+        if (!pedido.nrPedido) {
+            return res.status(400).json({
+                status: 400,
+                data: null,
+                msg: "Propriedade 'nrPedido' é obrigatória"
+            });
+        }
+
+        if (!pedido.cdFilial && !pedido.cgcFilial) {
+            return res.status(400).json({
+                status: 400,
+                data: null,
+                msg: "É obrigatório informar 'cdFilial' ou 'cgcFilial'"
+            });
+        }
+
+        if (!pedido.cliente || !pedido.cliente.cpfCgc) {
+            return res.status(400).json({
+                status: 400,
+                data: null,
+                msg: "Cliente e CPF/CNPJ são obrigatórios"
+            });
+        }
+
+        if (!pedido.itens || !Array.isArray(pedido.itens) || pedido.itens.length === 0) {
+            return res.status(400).json({
+                status: 400,
+                data: null,
+                msg: "Pedido deve conter pelo menos um item"
+            });
+        }
+
+        // Validar itens - cdProduto é obrigatório
+        for (const item of pedido.itens) {
+            if (!item.cdProduto) {
+                return res.status(400).json({
+                    status: 400,
+                    data: null,
+                    msg: "Propriedade 'cdProduto' é obrigatória em todos os itens"
+                });
+            }
+        }
+
+        // Gerar cdOrcamento
+        const cdOrcamento = proximoCdOrcamento++;
+
+        // Armazenar pedido
+        const pedidoRegistrado = {
+            ...pedido,
+            cdOrcamento,
+            situacao: statusPedidosMap[pedido.statusPedido] || 0,
+            dtCriacao: new Date().toISOString()
+        };
+
+        pedidosMockados[`${pedido.nrPedido}_${cdOrcamento}`] = pedidoRegistrado;
+
+        // Retornar resposta conforme especificado
+        res.status(200).json({
+            status: 200,
+            data: {
+                situacao: pedidoRegistrado.situacao,
+                cdOrcamento: cdOrcamento,
+                mensagem: "Orçamento registrado com sucesso"
+            },
+            msg: "Orçamento registrado com sucesso"
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            status: 500,
+            data: null,
+            msg: `Erro ao registrar pedido: ${error.message}`
+        });
+    }
+});
+
+// Endpoint GET /api/Ecommerce/pedidos/status - Consultar status do pedido
+app.get('/api/Ecommerce/pedidos/status', validateApiKey, (req, res) => {
+    try {
+        const { numeroPedido, cdOrcamento } = req.query;
+
+        // Validações
+        if (!numeroPedido || !cdOrcamento) {
+            return res.status(400).json({
+                status: 400,
+                data: null,
+                msg: "Parâmetros 'numeroPedido' e 'cdOrcamento' são obrigatórios"
+            });
+        }
+
+        // Buscar pedido
+        const chave = `${numeroPedido}_${cdOrcamento}`;
+        const pedido = pedidosMockados[chave];
+
+        if (!pedido) {
+            return res.status(404).json({
+                status: 404,
+                data: {
+                    situacao: 0, // Não encontrado
+                    cdOrcamento: parseInt(cdOrcamento),
+                    mensagem: "Pedido não encontrado"
+                },
+                msg: "Pedido não encontrado"
+            });
+        }
+
+        // Retornar pedido com status atualizado
+        res.status(200).json({
+            status: 200,
+            data: {
+                situacao: pedido.situacao,
+                cdOrcamento: pedido.cdOrcamento,
+                mensagem: "Consulta realizada com sucesso",
+                pedido: pedido
+            },
+            msg: "Consulta realizada com sucesso"
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            status: 500,
+            data: null,
+            msg: `Erro ao consultar status do pedido: ${error.message}`
+        });
+    }
+});
+
 // Rota de health check
 app.get('/health', (req, res) => {
     res.json({ status: 'OK', message: 'API está funcionando' });
@@ -1119,6 +1270,8 @@ app.get('/health', (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
     console.log(`📋 Endpoint: http://localhost:${PORT}/api/ecommerce/produtos/consulta`);
+    console.log(`📦 Endpoint: http://localhost:${PORT}/api/ecommerce/pedidos (POST)`);
+    console.log(`🔍 Endpoint: http://localhost:${PORT}/api/Ecommerce/pedidos/status (GET)`);
     console.log(`🔑 ApiKey: ${API_KEY}`);
     console.log(`📦 Total de produtos mockados: ${produtosMockados.length}`);
 });
